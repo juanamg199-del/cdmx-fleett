@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { sb } from "./supabase";
 
-const ADMIN_PW = "cdmxfleet2024";
+const ADMIN_PW = "Jonhy2010";
 const PRODUCTS = [
   {id:1,name:"Nissan March",price:820,daily:20},
   {id:2,name:"Hyundai Grand i10",price:2400,daily:60},
