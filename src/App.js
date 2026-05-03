@@ -1,89 +1,89 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { sb } from "./supabase";
 
-// ============================================================
-// 🚗 PRODUCTOS — Agrega o edita vehículos aquí
-// ============================================================
-const PRODUCTS = [
-  {
-    id:1, name:"Nissan March", price:820, daily:20, type:"taxi",
-    badge:"🚕 TAXI CDMX", desc:"Económico y ágil para la ciudad", referral:82,
-    img:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/2013_Nissan_March_%28K13%29_ST_hatchback_%282015-07-03%29_01.jpg/640px-2013_Nissan_March_%28K13%29_ST_hatchback_%282015-07-03%29_01.jpg",
-  },
-  {
-    id:2, name:"Hyundai Grand i10 Sedán", price:2400, daily:60, type:"taxi",
-    badge:"🚕 TAXI CDMX", desc:"Confort y rendimiento para taxi", referral:240,
-    img:"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Hyundai_Grand_i10_Sedan_%28facelift%2C_white%29%2C_front_8.28.19.jpg/640px-Hyundai_Grand_i10_Sedan_%28facelift%2C_white%29%2C_front_8.28.19.jpg",
-  },
-  {
-    id:3, name:"Nissan Versa", price:7200, daily:180, type:"taxi",
-    badge:"🚕 TAXI CDMX", desc:"El favorito de los taxistas de CDMX", referral:720,
-    img:"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/2020_Nissan_Versa_SR%2C_front_10.3.19.jpg/640px-2020_Nissan_Versa_SR%2C_front_10.3.19.jpg",
-  },
-  {
-    id:4, name:"Nissan Urvan", price:25200, daily:720, type:"ejecutivo",
-    badge:"⭐ EJECUTIVO", desc:"Transporte ejecutivo y de grupo", referral:2520,
-    img:"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Nissan_Urvan_E26_%28facelift%2C_NV350%29%2C_front_8.15.19.jpg/640px-Nissan_Urvan_E26_%28facelift%2C_NV350%29%2C_front_8.15.19.jpg",
-  },
-  {
-    id:5, name:"Chevrolet Tahoe", price:75600, daily:2160, type:"ejecutivo",
-    badge:"👑 PREMIUM", desc:"El máximo lujo en transporte ejecutivo", referral:7560,
-    img:"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/2022_Chevrolet_Tahoe_RST%2C_front_6.27.21.jpg/640px-2022_Chevrolet_Tahoe_RST%2C_front_6.27.21.jpg",
-  },
-];
-
-// ============================================================
-// 🎰 PREMIOS RULETA — Edita montos y probabilidades aquí
-// Los valores "p" deben sumar exactamente 1.0
-// ============================================================
-const PRIZES = [
-  { label:"$50",   amount:50,   color:"#FFD700", p:.20 },
-  { label:"$100",  amount:100,  color:"#00cc66", p:.15 },
-  { label:"$200",  amount:200,  color:"#0ea5e9", p:.10 },
-  { label:"$500",  amount:500,  color:"#7c3aed", p:.05 },
-  { label:"$1000", amount:1000, color:"#ff6b35", p:.02 },
-  { label:"$20",   amount:20,   color:"#888",    p:.25 },
-  { label:"x2",    amount:0, isDouble:true, color:"#ff3366", p:.08 },
-  { label:"$30",   amount:30,   color:"#999",    p:.15 },
-];
-
 const fmt     = (n) => `$${Number(n||0).toLocaleString("es-MX",{minimumFractionDigits:2})}`;
 const hash    = (s) => btoa(unescape(encodeURIComponent(s+"_cdmx2024")));
 const genCode = ()  => Math.random().toString(36).substring(2,8).toUpperCase();
 
+// Productos base (las imágenes se cargan desde Supabase config)
+const PRODUCTS_BASE = [
+  { id:1, name:"Nissan March",           price:820,   daily:20,   type:"taxi",      badge:"🚕 TAXI CDMX", desc:"Taxi oficial de la CDMX",        referral:82,   imgKey:"img_march" },
+  { id:2, name:"Hyundai Grand i10 Sedán",price:2400,  daily:60,   type:"taxi",      badge:"🚕 TAXI CDMX", desc:"Taxi oficial de la CDMX",         referral:240,  imgKey:"img_i10"   },
+  { id:3, name:"Nissan Versa",           price:7200,  daily:180,  type:"taxi",      badge:"🚕 TAXI CDMX", desc:"El favorito de los taxistas CDMX", referral:720,  imgKey:"img_versa" },
+  { id:4, name:"Nissan Urvan",           price:25200, daily:720,  type:"ejecutivo", badge:"⭐ EJECUTIVO",  desc:"Transporte ejecutivo y de grupo",  referral:2520, imgKey:null        },
+  { id:5, name:"Chevrolet Tahoe",        price:75600, daily:2160, type:"ejecutivo", badge:"👑 PREMIUM",    desc:"El máximo lujo ejecutivo",         referral:7560, imgKey:null        },
+];
+
+const IMG_EJECUTIVO = {
+  4: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Nissan_Urvan_E26_%28facelift%2C_NV350%29%2C_front_8.15.19.jpg/640px-Nissan_Urvan_E26_%28facelift%2C_NV350%29%2C_front_8.15.19.jpg",
+  5: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/2022_Chevrolet_Tahoe_RST%2C_front_6.27.21.jpg/640px-2022_Chevrolet_Tahoe_RST%2C_front_6.27.21.jpg",
+};
+
 export default function App() {
-  const [user,  setUser]  = useState(undefined);
-  const [view,  setView]  = useState("home");
-  const [toast, setToast] = useState(null);
+  const [user,   setUser]   = useState(undefined);
+  const [view,   setView]   = useState("home");
+  const [toast,  setToast]  = useState(null);
+  const [config, setConfig] = useState({});       // datos de Supabase config
+  const [products,setProducts]=useState(PRODUCTS_BASE);
   const rtRef = useRef(null);
 
-  const toast$ = (msg, type="success") => { setToast({msg,type}); setTimeout(()=>setToast(null),3500); };
+  const toast$ = (msg,type="success")=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3500); };
 
-  const loadUser = useCallback(async (uid) => {
-    const { data: u } = await sb.from("users").select("*").eq("id",uid).single();
-    if (!u) { localStorage.removeItem("uid"); setUser(null); return; }
-    const { data: rentals } = await sb.from("rentals").select("*").eq("user_id",uid);
-    setUser({ ...u, rentals: rentals||[] });
-    if (rtRef.current) rtRef.current.unsubscribe();
+  // Cargar config global (imágenes, cuenta bancaria, ruleta, productos extra)
+  const loadConfig = useCallback(async()=>{
+    const {data} = await sb.from("config").select("*");
+    if(!data) return;
+    const cfg = {};
+    data.forEach(r=>{ cfg[r.key]=r.value; });
+    setConfig(cfg);
+    // Actualizar imágenes en productos
+    setProducts(prev => prev.map(p => ({
+      ...p,
+      img: p.imgKey && cfg[p.imgKey] ? cfg[p.imgKey] : (IMG_EJECUTIVO[p.id]||null)
+    })));
+    // Cargar productos extra del admin
+    if(cfg.extra_products){
+      try{
+        const extra = JSON.parse(cfg.extra_products);
+        setProducts(prev=>{
+          const base = PRODUCTS_BASE.map(p=>({...p, img: p.imgKey&&cfg[p.imgKey]?cfg[p.imgKey]:(IMG_EJECUTIVO[p.id]||null)}));
+          return [...base, ...extra];
+        });
+      }catch(e){}
+    }
+  },[]);
+
+  const loadUser = useCallback(async(uid)=>{
+    const {data:u} = await sb.from("users").select("*").eq("id",uid).single();
+    if(!u){ localStorage.removeItem("uid"); setUser(null); return; }
+    const {data:rentals} = await sb.from("rentals").select("*").eq("user_id",uid);
+    setUser({...u, rentals:rentals||[]});
+    if(rtRef.current) rtRef.current.unsubscribe();
     rtRef.current = sb.channel("u_"+uid)
       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"users",filter:`id=eq.${uid}`},
-        p => setUser(prev => prev ? {...prev,...p.new,rentals:prev.rentals} : prev))
+        p=>setUser(prev=>prev?{...prev,...p.new,rentals:prev.rentals}:prev))
       .subscribe();
   },[]);
 
   useEffect(()=>{
-    const uid = localStorage.getItem("uid");
-    if (uid) loadUser(uid); else setUser(null);
-    return () => { if (rtRef.current) rtRef.current.unsubscribe(); };
-  },[loadUser]);
+    loadConfig();
+    const uid=localStorage.getItem("uid");
+    if(uid) loadUser(uid); else setUser(null);
+    return()=>{ if(rtRef.current) rtRef.current.unsubscribe(); };
+  },[loadConfig,loadUser]);
 
-  const refresh = () => user && loadUser(user.id);
-  const logout  = () => { localStorage.removeItem("uid"); if(rtRef.current) rtRef.current.unsubscribe(); setUser(null); setView("home"); };
+  const refresh = ()=>user&&loadUser(user.id);
+  const logout  = ()=>{ localStorage.removeItem("uid"); if(rtRef.current) rtRef.current.unsubscribe(); setUser(null); setView("home"); };
 
-  if (user===undefined) return <Loader/>;
-  if (!user) return <Auth onLogin={u=>{localStorage.setItem("uid",u.id);loadUser(u.id);}} toast$={toast$} toast={toast}/>;
+  if(user===undefined) return <Loader/>;
+  if(!user) return <Auth onLogin={u=>{localStorage.setItem("uid",u.id);loadUser(u.id);}} toast$={toast$} toast={toast}/>;
 
-  return (
+  // Premios de ruleta desde config
+  let prizes = [];
+  try{ prizes = config.roulette_prizes ? JSON.parse(config.roulette_prizes) : defaultPrizes(); }
+  catch(e){ prizes = defaultPrizes(); }
+
+  return(
     <div style={{minHeight:"100vh",background:"#0a0a0f",color:"#fff",fontFamily:"'Syne',sans-serif"}}>
       <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
       <style>{CSS}</style>
@@ -108,17 +108,32 @@ export default function App() {
       </nav>
       {toast&&<div style={{position:"fixed",bottom:18,right:18,zIndex:9999,background:toast.type==="error"?"#cc0033":"#00aa55",color:"#fff",padding:"12px 20px",borderRadius:12,fontWeight:700,animation:"su .3s ease"}}>{toast.msg}</div>}
       <div style={{maxWidth:1180,margin:"0 auto",padding:"20px 12px"}}>
-        {view==="home"      && <Home      user={user} refresh={refresh} setView={setView} toast$={toast$}/>}
-        {view==="rent"      && <Rent      user={user} refresh={refresh} toast$={toast$}/>}
-        {view==="dashboard" && <Dashboard user={user}/>}
-        {view==="roulette"  && <Roulette  user={user} refresh={refresh} toast$={toast$}/>}
-        {view==="wallet"    && <Wallet    user={user} refresh={refresh} toast$={toast$}/>}
+        {view==="home"      && <Home      user={user} refresh={refresh} setView={setView} toast$={toast$} products={products}/>}
+        {view==="rent"      && <Rent      user={user} refresh={refresh} toast$={toast$}   products={products}/>}
+        {view==="dashboard" && <Dashboard user={user} products={products}/>}
+        {view==="roulette"  && <Roulette  user={user} refresh={refresh} toast$={toast$}   prizes={prizes}/>}
+        {view==="wallet"    && <Wallet    user={user} refresh={refresh} toast$={toast$}   config={config}/>}
       </div>
     </div>
   );
 }
 
 const Loader=()=>(<div style={{minHeight:"100vh",background:"#0a0a0f",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><div style={{fontSize:48}}>🚖</div><div style={{color:"#FFD700",fontFamily:"sans-serif",fontSize:16}}>Cargando...</div></div>);
+
+function defaultPrizes(){
+  return [
+    {label:"iPhone 17",amount:0,isPhone:true,color:"#7c3aed",p:0},
+    {label:"$10,000",amount:10000,color:"#ff6b35",p:0},
+    {label:"$5,000",amount:5000,color:"#FF8C00",p:0},
+    {label:"$1,000",amount:1000,color:"#0ea5e9",p:0},
+    {label:"$500",amount:500,color:"#FFD700",p:0},
+    {label:"$100",amount:100,color:"#00cc66",p:0.01},
+    {label:"$50",amount:50,color:"#22d3ee",p:0.01},
+    {label:"$20",amount:20,color:"#a78bfa",p:0.04},
+    {label:"$10",amount:10,color:"#888",p:0.25},
+    {label:"$4",amount:4,color:"#555",p:0.69},
+  ];
+}
 
 /* ── AUTH ── */
 function Auth({onLogin,toast$,toast}){
@@ -135,9 +150,8 @@ function Auth({onLogin,toast$,toast}){
     if(!data){toast$("Teléfono o contraseña incorrectos","error");setBusy(false);return;}
     onLogin(data); setBusy(false);
   };
-
   const register=async()=>{
-    if(!ph||ph.length<10)  return toast$("Teléfono inválido (10 dígitos)","error");
+    if(!ph||ph.length<10)  return toast$("Teléfono inválido","error");
     if(!nm.trim())          return toast$("Ingresa tu nombre","error");
     if(!pw||pw.length<6)   return toast$("Contraseña mín. 6 caracteres","error");
     setBusy(true);
@@ -146,13 +160,14 @@ function Auth({onLogin,toast$,toast}){
     let refBy=null;
     if(rc.trim()){
       const {data:r}=await sb.from("users").select("id").eq("code",rc.toUpperCase()).single();
-      if(!r){toast$("Código de invitación inválido","error");setBusy(false);return;}
+      if(!r){toast$("Código inválido","error");setBusy(false);return;}
       refBy=r.id;
     }
     const {data:nu,error}=await sb.from("users").insert({
       phone:ph,name:nm,password_hash:hash(pw),code:genCode(),
       balance:0,earnings:0,referred_by:refBy,referral_count:0,
-      last_collect:0,created_at:Date.now()
+      last_collect:0,created_at:Date.now(),
+      bank_account:"",bank_name:""
     }).select().single();
     if(error){toast$("Error: "+error.message,"error");setBusy(false);return;}
     if(refBy){
@@ -197,10 +212,10 @@ function Auth({onLogin,toast$,toast}){
 }
 
 /* ── HOME ── */
-function Home({user,refresh,setView,toast$}){
+function Home({user,refresh,setView,toast$,products}){
   const ms24=86400000,now=Date.now(),el=now-(user.last_collect||0),can=el>=ms24;
   const pct=Math.min(100,(el/ms24)*100),hrs=Math.floor(Math.max(0,ms24-el)/3600000),mins=Math.floor((Math.max(0,ms24-el)%3600000)/60000);
-  const rentals=user.rentals||[],td=rentals.reduce((a,r)=>{const p=PRODUCTS.find(x=>x.id===r.product_id);return a+(p?p.daily:0);},0);
+  const rentals=user.rentals||[],td=rentals.reduce((a,r)=>{const p=products.find(x=>x.id===r.product_id);return a+(p?p.daily:0);},0);
   const collect=async()=>{
     if(!can) return toast$(`⏰ Regresa en ${hrs}h ${mins}m`,"error");
     if(!rentals.length) return toast$("Sin vehículos rentados","error");
@@ -228,15 +243,13 @@ function Home({user,refresh,setView,toast$}){
         <div style={{background:"#111118",border:"1px solid #FFD70030",borderRadius:16,padding:20,marginBottom:22}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:12}}>
             <div><h2 style={{margin:0,fontSize:16,fontWeight:700}}>💵 Cobro de Ganancias</h2><p style={{margin:"3px 0 0",color:"#444",fontSize:12}}>Disponible cada 24 horas</p></div>
-            <button onClick={collect} className={can?"bon":"boff"} style={{padding:"11px 20px",borderRadius:12,border:"none",cursor:can?"pointer":"not-allowed",fontWeight:800,fontSize:13,fontFamily:"'Syne'"}}>
-              {can?`✅ Cobrar ${fmt(td)}`:`⏰ ${hrs}h ${mins}m`}
-            </button>
+            <button onClick={collect} className={can?"bon":"boff"} style={{padding:"11px 20px",borderRadius:12,border:"none",cursor:can?"pointer":"not-allowed",fontWeight:800,fontSize:13,fontFamily:"'Syne'"}}>{can?`✅ Cobrar ${fmt(td)}`:`⏰ ${hrs}h ${mins}m`}</button>
           </div>
           <div style={{background:"#0a0a0f",borderRadius:5,height:5,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:can?"linear-gradient(90deg,#00cc66,#00ff88)":"linear-gradient(90deg,#FFD700,#FF8C00)",borderRadius:5,transition:"width .5s"}}/></div>
         </div>
       )}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
-        {[{i:"🚗",t:"Rentar",d:"Elige tu flota",a:"rent",c:"#FFD700"},{i:"🎰",t:"Ruleta",d:"Gana monedas",a:"roulette",c:"#7c3aed"},{i:"💳",t:"Recargar",d:"Deposita",a:"wallet",c:"#0ea5e9"},{i:"📤",t:"Retirar",d:"Solicita retiro",a:"wallet",c:"#00cc66"}].map(c=>(
+        {[{i:"🚗",t:"Rentar",d:"Elige tu flota",a:"rent",c:"#FFD700"},{i:"🎰",t:"Ruleta",d:"Gana premios",a:"roulette",c:"#7c3aed"},{i:"💳",t:"Recargar",d:"Deposita",a:"wallet",c:"#0ea5e9"},{i:"📤",t:"Retirar",d:"Solicita retiro",a:"wallet",c:"#00cc66"}].map(c=>(
           <button key={c.t} onClick={()=>setView(c.a)} style={{background:"#111118",border:`1px solid ${c.c}15`,borderRadius:13,padding:"16px 12px",cursor:"pointer",textAlign:"left",transition:"border-color .2s"}} onMouseEnter={e=>e.currentTarget.style.borderColor=c.c} onMouseLeave={e=>e.currentTarget.style.borderColor=`${c.c}15`}>
             <div style={{fontSize:24,marginBottom:8}}>{c.i}</div><div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{c.t}</div><div style={{color:"#444",fontSize:11}}>{c.d}</div>
           </button>
@@ -247,7 +260,7 @@ function Home({user,refresh,setView,toast$}){
 }
 
 /* ── RENT ── */
-function Rent({user,refresh,toast$}){
+function Rent({user,refresh,toast$,products}){
   const [conf,setConf]=useState(null),[busy,setBusy]=useState(false);
   const rentals=user.rentals||[],rented=id=>rentals.some(r=>r.product_id===id);
   const doRent=async p=>{
@@ -269,11 +282,11 @@ function Rent({user,refresh,toast$}){
       <p style={{color:"#444",margin:"0 0 22px",fontSize:13}}>Genera ingresos pasivos cada 24 horas</p>
       <Stitle l="🚕 TAXI CDMX"/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:14,marginBottom:28}}>
-        {PRODUCTS.filter(p=>p.type==="taxi").map(p=><PC key={p.id} p={p} rented={rented(p.id)} onSel={()=>setConf(p)}/>)}
+        {products.filter(p=>p.type==="taxi").map(p=><PC key={p.id} p={p} rented={rented(p.id)} onSel={()=>setConf(p)}/>)}
       </div>
       <Stitle l="⭐ EJECUTIVO & PREMIUM" dark/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:14}}>
-        {PRODUCTS.filter(p=>p.type==="ejecutivo").map(p=><PC key={p.id} p={p} rented={rented(p.id)} onSel={()=>setConf(p)}/>)}
+        {products.filter(p=>p.type==="ejecutivo").map(p=><PC key={p.id} p={p} rented={rented(p.id)} onSel={()=>setConf(p)}/>)}
       </div>
       {conf&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.88)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -302,14 +315,13 @@ const Stitle=({l,dark})=>(<div style={{display:"flex",alignItems:"center",gap:10
 
 const PC=({p,rented,onSel})=>{
   const t=p.type==="taxi";
-  const [imgErr,setImgErr]=useState(false);
   return(
     <div style={{background:"#111118",border:`1px solid ${rented?"#00cc6630":"#1a1a1a"}`,borderRadius:16,overflow:"hidden",transition:"transform .2s,border-color .2s"}} onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.borderColor=t?"#FFD70044":"#3a3a3a";}} onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.borderColor=rented?"#00cc6630":"#1a1a1a";}}>
       <div style={{position:"relative",height:180,background:"#181818",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
-        {!imgErr
-          ? <img src={p.img} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}} onError={()=>setImgErr(true)}/>
-          : <div style={{fontSize:48,opacity:.3}}>🚗</div>
-        }
+        {p.img
+          ? <img src={p.img} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";e.target.nextSibling&&(e.target.nextSibling.style.display="flex");}}/>
+          : null}
+        <div style={{display:p.img?"none":"flex",position:"absolute",inset:0,alignItems:"center",justifyContent:"center",fontSize:48,opacity:.3}}>🚗</div>
         <div style={{position:"absolute",top:8,left:8,background:t?"#FFD700":"rgba(0,0,0,.8)",border:t?"none":"1px solid #333",color:t?"#000":"#fff",padding:"3px 8px",borderRadius:20,fontSize:9,fontWeight:700}}>{p.badge}</div>
         {rented&&<div style={{position:"absolute",top:8,right:8,background:"#00cc66",color:"#fff",padding:"3px 8px",borderRadius:20,fontSize:9,fontWeight:700}}>✓ RENTADO</div>}
       </div>
@@ -328,7 +340,7 @@ const PC=({p,rented,onSel})=>{
 };
 
 /* ── DASHBOARD ── */
-function Dashboard({user}){
+function Dashboard({user,products}){
   const rentals=user.rentals||[];
   return(
     <div>
@@ -338,9 +350,9 @@ function Dashboard({user}){
           <h2 style={{margin:"0 0 14px",fontSize:15}}>🚗 Mis Vehículos</h2>
           {rentals.length===0?<p style={{color:"#333",textAlign:"center",padding:"20px 0",fontSize:13}}>Sin vehículos aún</p>:(
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:10}}>
-              {rentals.map(r=>{const p=PRODUCTS.find(x=>x.id===r.product_id);return p?(
+              {rentals.map(r=>{const p=products.find(x=>x.id===r.product_id);return p?(
                 <div key={r.id} style={{background:"#0a0a0f",border:"1px solid #FFD70015",borderRadius:12,overflow:"hidden"}}>
-                  <img src={p.img} alt={p.name} style={{width:"100%",height:100,objectFit:"cover"}} onError={e=>e.target.style.display="none"}/>
+                  {p.img&&<img src={p.img} alt={p.name} style={{width:"100%",height:100,objectFit:"cover"}} onError={e=>e.target.style.display="none"}/>}
                   <div style={{padding:10}}><div style={{fontWeight:700,fontSize:12}}>{p.name}</div><div style={{fontSize:10,color:"#444",marginTop:2}}>{new Date(r.start_date).toLocaleDateString("es-MX")}</div><div style={{fontFamily:"'Space Mono'",color:"#00cc66",fontWeight:700,marginTop:5,fontSize:12}}>+{fmt(p.daily)}/día</div></div>
                 </div>
               ):null;})}
@@ -348,7 +360,7 @@ function Dashboard({user}){
           )}
         </div>
         <div style={{background:"#111118",border:"1px solid #7c3aed20",borderRadius:16,padding:20}}>
-          <h2 style={{margin:"0 0 12px",fontSize:15}}>🔗 Mi Código de Referido</h2>
+          <h2 style={{margin:"0 0 12px",fontSize:15}}>🔗 Mi Código</h2>
           <div style={{background:"#0a0a0f",border:"2px dashed #7c3aed40",borderRadius:12,padding:"14px",textAlign:"center",marginBottom:10}}>
             <div style={{fontFamily:"'Space Mono'",fontSize:22,fontWeight:700,color:"#7c3aed",letterSpacing:4}}>{user.code}</div>
           </div>
@@ -368,33 +380,43 @@ function Dashboard({user}){
 }
 
 /* ── ROULETTE ── */
-function Roulette({user,refresh,toast$}){
+function Roulette({user,refresh,toast$,prizes}){
   const [spinning,setSpin]=useState(false),[ang,setAng]=useState(0),[res,setRes]=useState(null);
-  // Ruleta deshabilitada hasta que admin la active para este usuario
-  const enabled = user.roulette_enabled === true;
+  const enabled=user.roulette_enabled===true;
   const k=`sp_${user.id}`;
-  const [sp,setSp]=useState(()=>{try{const s=JSON.parse(localStorage.getItem(k));if(s&&Date.now()-s.r<86400000)return s;}catch{}return{c:3,r:Date.now()};});
+  const [sp,setSp]=useState(()=>{
+    try{const s=JSON.parse(localStorage.getItem(k));if(s&&Date.now()-s.r<86400000)return s;}catch{}
+    return{c:user.roulette_spins||3,r:Date.now()};
+  });
   const saveSp=s=>{setSp(s);localStorage.setItem(k,JSON.stringify(s));};
-  const seg=360/PRIZES.length;
+  const seg=360/prizes.length;
 
   const doSpin=async()=>{
     if(!enabled) return toast$("La ruleta no está activa en tu cuenta","error");
-    let cur=sp; if(Date.now()-cur.r>=86400000){cur={c:3,r:Date.now()};saveSp(cur);}
-    if(cur.c<=0) return toast$("Sin giros. Compra uno o espera mañana","error");
+    let cur=sp; if(Date.now()-cur.r>=86400000){cur={c:user.roulette_spins||3,r:Date.now()};saveSp(cur);}
+    if(cur.c<=0) return toast$("Sin giros. Espera mañana o compra más","error");
+    // Calcular probabilidades acumuladas (solo premios con p>0)
+    const validPrizes=prizes.filter(p=>p.p>0);
+    if(validPrizes.length===0) return toast$("No hay premios configurados","error");
     const roll=Math.random();let cum=0,idx=0;
-    for(let i=0;i<PRIZES.length;i++){cum+=PRIZES[i].p;if(roll<=cum){idx=i;break;}}
+    for(let i=0;i<prizes.length;i++){cum+=prizes[i].p;if(roll<=cum){idx=i;break;}}
     setSpin(true);setRes(null);setAng(a=>a+1800+(seg*idx)+(seg/2));
     saveSp({...cur,c:cur.c-1});
     setTimeout(async()=>{
-      setSpin(false);const pr=PRIZES[idx];
-      let win=pr.isDouble?Math.round((user.balance||0)*.1*100)/100:pr.amount;
+      setSpin(false);const pr=prizes[idx];
+      if(pr.isPhone){
+        setRes({pr,win:0,isPhone:true});
+        toast$("🎉 ¡Ganaste un iPhone 17! Contacta al admin.");
+        return;
+      }
+      let win=pr.amount||0;
       if(win>0){await sb.from("users").update({balance:Number(user.balance)+win,earnings:Number(user.earnings)+win}).eq("id",user.id);refresh();toast$(`🎉 ¡Ganaste ${fmt(win)}!`);}
       setRes({pr,win});
     },4500);
   };
 
   const buy=async()=>{
-    if(!enabled) return toast$("La ruleta no está activa en tu cuenta","error");
+    if(!enabled) return toast$("La ruleta no está activa","error");
     if((user.balance||0)<50) return toast$("Saldo insuficiente","error");
     await sb.from("users").update({balance:Number(user.balance)-50}).eq("id",user.id);refresh();
     saveSp({...sp,c:sp.c+1});toast$("Compraste 1 giro por $50");
@@ -403,38 +425,47 @@ function Roulette({user,refresh,toast$}){
   return(
     <div style={{maxWidth:640,margin:"0 auto"}}>
       <h1 style={{fontSize:22,fontWeight:800,margin:"0 0 5px",textAlign:"center"}}>🎰 Ruleta de Premios</h1>
-      <p style={{color:"#444",textAlign:"center",margin:"0 0 22px",fontSize:13}}>3 giros gratis al día cuando esté activa</p>
-
-      {!enabled ? (
+      <p style={{color:"#444",textAlign:"center",margin:"0 0 22px",fontSize:13}}>Gira y gana increíbles premios</p>
+      {!enabled?(
         <div style={{background:"#111118",border:"1px solid #FFD70030",borderRadius:18,padding:40,textAlign:"center"}}>
           <div style={{fontSize:52,marginBottom:16}}>🔒</div>
           <h2 style={{color:"#FFD700",fontWeight:800,fontSize:20,margin:"0 0 10px"}}>Ruleta No Activa</h2>
-          <p style={{color:"#555",fontSize:14,margin:0}}>El administrador debe activar la ruleta para tu cuenta.<br/>Contáctanos para más información.</p>
+          <p style={{color:"#555",fontSize:14,margin:0}}>El administrador debe activar la ruleta para tu cuenta.</p>
         </div>
-      ) : (
+      ):(
         <>
           <div style={{display:"flex",justifyContent:"center",gap:12,marginBottom:22,flexWrap:"wrap"}}>
-            <IB l="Giros" v={sp.c} c="#FFD700"/><IB l="Saldo" v={fmt(user.balance)} c="#fff"/>
+            <IB l="Giros disponibles" v={sp.c} c="#FFD700"/>
+            <IB l="Tu saldo" v={fmt(user.balance)} c="#fff"/>
             <button onClick={buy} style={{background:"#111118",border:"1px solid #7c3aed30",color:"#7c3aed",borderRadius:11,padding:"10px 14px",cursor:"pointer",fontWeight:700,fontFamily:"'Syne'",fontSize:11,lineHeight:1.5}}>+ Giro<br/><span style={{fontFamily:"'Space Mono'",fontSize:10}}>$50</span></button>
           </div>
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
-            <div style={{position:"relative",width:280,height:280}}>
-              <div style={{position:"absolute",top:-15,left:"50%",transform:"translateX(-50%)",fontSize:24,zIndex:10}}>▼</div>
-              <svg width="280" height="280" viewBox="0 0 280 280" style={{transform:`rotate(${ang}deg)`,transition:spinning?"transform 4s cubic-bezier(.17,.67,.12,.99)":"none",filter:"drop-shadow(0 0 16px rgba(255,215,0,.18))"}}>
-                {PRIZES.map((p,i)=>{
-                  const a1=(i*seg-90)*Math.PI/180,a2=((i+1)*seg-90)*Math.PI/180,cx=140,cy=140,r=130;
+            <div style={{position:"relative",width:300,height:300}}>
+              <div style={{position:"absolute",top:-15,left:"50%",transform:"translateX(-50%)",fontSize:26,zIndex:10}}>▼</div>
+              <svg width="300" height="300" viewBox="0 0 300 300" style={{transform:`rotate(${ang}deg)`,transition:spinning?"transform 4s cubic-bezier(.17,.67,.12,.99)":"none",filter:"drop-shadow(0 0 18px rgba(255,215,0,.2))"}}>
+                {prizes.map((p,i)=>{
+                  const a1=(i*seg-90)*Math.PI/180,a2=((i+1)*seg-90)*Math.PI/180,cx=150,cy=150,r=140;
                   const x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1),x2=cx+r*Math.cos(a2),y2=cy+r*Math.sin(a2);
-                  const mx=cx+(r*.66)*Math.cos((a1+a2)/2),my=cy+(r*.66)*Math.sin((a1+a2)/2);
-                  return(<g key={i}><path d={`M${cx} ${cy} L${x1} ${y1} A${r} ${r} 0 0 1 ${x2} ${y2}Z`} fill={p.color} stroke="#0a0a0f" strokeWidth="2"/><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fill="#fff" fontSize="10" fontWeight="800" fontFamily="Syne" transform={`rotate(${i*seg+seg/2+90},${mx},${my})`}>{p.label}</text></g>);
+                  const mx=cx+(r*.67)*Math.cos((a1+a2)/2),my=cy+(r*.67)*Math.sin((a1+a2)/2);
+                  return(<g key={i}><path d={`M${cx} ${cy} L${x1} ${y1} A${r} ${r} 0 0 1 ${x2} ${y2}Z`} fill={p.color||"#555"} stroke="#0a0a0f" strokeWidth="2"/><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fill="#fff" fontSize={p.label.length>6?"8":"10"} fontWeight="800" fontFamily="Syne" transform={`rotate(${i*seg+seg/2+90},${mx},${my})`}>{p.label}</text></g>);
                 })}
-                <circle cx="140" cy="140" r="19" fill="#0a0a0f" stroke="#FFD700" strokeWidth="3"/>
-                <text x="140" y="140" textAnchor="middle" dominantBaseline="middle" fill="#FFD700" fontSize="12">⭐</text>
+                <circle cx="150" cy="150" r="20" fill="#0a0a0f" stroke="#FFD700" strokeWidth="3"/>
+                <text x="150" y="150" textAnchor="middle" dominantBaseline="middle" fill="#FFD700" fontSize="13">⭐</text>
               </svg>
             </div>
             <button onClick={doSpin} disabled={spinning||sp.c<=0} style={{padding:"14px 40px",background:spinning||sp.c<=0?"#1a1a1a":"linear-gradient(135deg,#FFD700,#FF8C00)",color:spinning||sp.c<=0?"#333":"#000",border:"none",borderRadius:14,cursor:spinning||sp.c<=0?"not-allowed":"pointer",fontWeight:800,fontFamily:"'Syne'",fontSize:15}}>
               {spinning?"🎰 Girando...":"🎰 ¡GIRAR!"}
             </button>
-            {res&&!spinning&&(<div style={{background:"#111118",border:`2px solid ${res.pr.color}`,borderRadius:14,padding:20,textAlign:"center",width:"100%",animation:"su .4s ease"}}><div style={{fontSize:38,marginBottom:7}}>🎉</div><div style={{fontWeight:800,fontSize:19,color:res.pr.color,marginBottom:4}}>¡{res.pr.label}!</div><div style={{fontFamily:"'Space Mono'",fontSize:16,color:"#00cc66",fontWeight:700}}>+{fmt(res.win)}</div></div>)}
+            {res&&!spinning&&(
+              <div style={{background:"#111118",border:`2px solid ${res.pr.color}`,borderRadius:14,padding:20,textAlign:"center",width:"100%",animation:"su .4s ease"}}>
+                <div style={{fontSize:38,marginBottom:7}}>{res.isPhone?"📱":"🎉"}</div>
+                <div style={{fontWeight:800,fontSize:19,color:res.pr.color,marginBottom:4}}>¡{res.pr.label}!</div>
+                {res.isPhone
+                  ? <div style={{color:"#aaa",fontSize:13}}>Contacta al administrador para reclamar tu premio</div>
+                  : <div style={{fontFamily:"'Space Mono'",fontSize:16,color:"#00cc66",fontWeight:700}}>+{fmt(res.win)}</div>
+                }
+              </div>
+            )}
           </div>
         </>
       )}
@@ -444,11 +475,18 @@ function Roulette({user,refresh,toast$}){
 const IB=({l,v,c})=>(<div style={{background:"#111118",border:"1px solid #1e1e1e",borderRadius:11,padding:"10px 18px",textAlign:"center"}}><div style={{fontSize:9,color:"#444",marginBottom:2}}>{l}</div><div style={{fontFamily:"'Space Mono'",fontWeight:700,fontSize:16,color:c}}>{v}</div></div>);
 
 /* ── WALLET ── */
-function Wallet({user,refresh,toast$}){
+function Wallet({user,refresh,toast$,config}){
   const [tab,setTab]=useState("deposit");
   const [a,setA]=useState(""),[pr,setPr]=useState("");
-  const [wa,setWa]=useState(""),[wb,setWb]=useState(""),[wac,setWac]=useState("");
+  // Datos bancarios guardados del usuario
+  const [wa,setWa]=useState(user.bank_account||"");
+  const [wb,setWb]=useState(user.bank_name||"");
   const [busy,setBusy]=useState(false);
+
+  const bankName    = config.bank_name    || "Albo";
+  const bankHolder  = config.bank_holder  || "Blanca Rosa María";
+  const bankAccount = config.bank_account || "721180100035412791";
+
   const dep=async()=>{
     if(!a||isNaN(a)||Number(a)<=0) return toast$("Monto inválido","error");
     if(!pr.trim()) return toast$("Ingresa referencia/comprobante","error");
@@ -457,16 +495,20 @@ function Wallet({user,refresh,toast$}){
     setA("");setPr("");setBusy(false);
     toast$("✅ Solicitud enviada. Procesada en <24hrs.");
   };
+
   const wit=async()=>{
     if(!wa||isNaN(wa)||Number(wa)<=0) return toast$("Monto inválido","error");
     if(Number(wa)>(user.balance||0)) return toast$("Saldo insuficiente","error");
-    if(!wac.trim()||!wb.trim()) return toast$("Ingresa cuenta y banco","error");
+    if(!wb.trim()) return toast$("Ingresa tu banco/CLABE","error");
     setBusy(true);
-    await sb.from("withdrawals").insert({user_id:user.id,user_name:user.name,user_phone:user.phone,amount:Number(wa),bank:wb,account:wac,status:"pending",created_at:Date.now()});
+    // Guardar datos bancarios del usuario para futuras solicitudes
+    await sb.from("users").update({bank_account:wa,bank_name:wb}).eq("id",user.id);
+    await sb.from("withdrawals").insert({user_id:user.id,user_name:user.name,user_phone:user.phone,amount:Number(wa),bank:wb,account:user.bank_account||"",status:"pending",created_at:Date.now()});
     await sb.from("users").update({balance:Number(user.balance)-Number(wa)}).eq("id",user.id);
-    refresh();setWa("");setWb("");setWac("");setBusy(false);
+    refresh();setBusy(false);
     toast$("✅ Retiro solicitado. Se procesa en 24–48hrs.");
   };
+
   return(
     <div style={{maxWidth:580,margin:"0 auto"}}>
       <h1 style={{fontSize:22,fontWeight:800,margin:"0 0 5px"}}>💰 Billetera</h1>
@@ -481,9 +523,10 @@ function Wallet({user,refresh,toast$}){
           <h2 style={{margin:"0 0 14px",fontSize:15}}>💳 Recargar Saldo</h2>
           <div style={{background:"linear-gradient(135deg,#1a1a2e,#0f0f1a)",border:"1px solid #FFD70030",borderRadius:13,padding:16,marginBottom:20}}>
             <div style={{fontSize:9,color:"#666",letterSpacing:2,fontWeight:700,marginBottom:10}}>DATOS PARA DEPOSITAR</div>
-            {[["Banco","Albo"],["Titular","Blanca Rosa María"],["No. de cuenta","721180100035412791"]].map(([l,v])=>(
+            {[["Banco",bankName],["Titular",bankHolder],["No. de cuenta",bankAccount]].map(([l,v])=>(
               <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #1a1a2e",fontSize:12}}>
-                <span style={{color:"#444"}}>{l}</span><span style={{fontWeight:700,color:l.includes("cuenta")?"#FFD700":"#fff",fontFamily:l.includes("cuenta")?"'Space Mono'":"inherit"}}>{v}</span>
+                <span style={{color:"#444"}}>{l}</span>
+                <span style={{fontWeight:700,color:l.includes("cuenta")?"#FFD700":"#fff",fontFamily:l.includes("cuenta")?"'Space Mono'":"inherit"}}>{v}</span>
               </div>
             ))}
           </div>
@@ -497,10 +540,20 @@ function Wallet({user,refresh,toast$}){
       {tab==="withdraw"&&(
         <div style={{background:"#111118",border:"1px solid #1e1e1e",borderRadius:18,padding:22}}>
           <h2 style={{margin:"0 0 14px",fontSize:15}}>📤 Solicitar Retiro</h2>
+          {(user.bank_account||user.bank_name)&&(
+            <div style={{background:"#0a0a14",border:"1px solid #00cc6620",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12}}>
+              <div style={{color:"#444",marginBottom:4}}>📋 Datos guardados de tu último retiro:</div>
+              <div style={{color:"#ccc"}}>{user.bank_name} — <span style={{fontFamily:"'Space Mono'",color:"#00cc66"}}>{user.bank_account}</span></div>
+            </div>
+          )}
           <div style={{display:"flex",flexDirection:"column",gap:11}}>
-            <div><input className="inp" type="number" placeholder="Monto a retirar" value={wa} onChange={e=>setWa(e.target.value)}/><div style={{fontSize:11,color:"#333",marginTop:4}}>Disponible: {fmt(user.balance)}</div></div>
+            <div>
+              <input className="inp" type="number" placeholder="Monto a retirar" value={wa} onChange={e=>setWa(e.target.value)}/>
+              <div style={{fontSize:11,color:"#333",marginTop:4}}>Disponible: {fmt(user.balance)}</div>
+            </div>
             <input className="inp" placeholder="Banco (BBVA, HSBC, Albo...)" value={wb} onChange={e=>setWb(e.target.value)}/>
-            <input className="inp" placeholder="CLABE o número de cuenta" value={wac} onChange={e=>setWac(e.target.value)}/>
+            <input className="inp" placeholder="CLABE o número de cuenta" value={user.bank_account} onChange={e=>{}} readOnly style={{color:"#888"}}/>
+            <p style={{fontSize:11,color:"#444",margin:0}}>Para cambiar tu CLABE contacta al administrador.</p>
             <button onClick={wit} disabled={busy} style={{padding:"13px",background:"linear-gradient(135deg,#00cc66,#00ff88)",border:"none",color:"#000",borderRadius:12,cursor:"pointer",fontWeight:800,fontFamily:"'Syne'",fontSize:14}}>{busy?"⏳...":"✅ Solicitar Retiro"}</button>
           </div>
         </div>
