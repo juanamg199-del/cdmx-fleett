@@ -392,90 +392,79 @@ function Dashboard({user,products}){
 function Roulette({user,refresh,toast$,prizes}){
   const [spinning,setSpin]=useState(false),[ang,setAng]=useState(0),[res,setRes]=useState(null);
   const enabled=user.roulette_enabled===true;
-  const k=`sp_${user.id}`;
-  const initSpins=()=>{
-    try{
-      const s=JSON.parse(localStorage.getItem(k));
-      if(s&&Date.now()-s.r<86400000) return s;
-    }catch(e){}
-    return{c:Number(user.roulette_spins)||3,r:Date.now()};
-  };
-  const [sp,setSp]=useState(initSpins);
-  const saveSp=s=>{setSp(s);localStorage.setItem(k,JSON.stringify(s));};
+  // Giros vienen SOLO de Supabase — tú los controlas completamente
+  const spinsLeft = Number(user.roulette_spins) || 0;
   const seg=360/prizes.length;
-
-  // Cuando cambien los giros del admin, actualizar localmente
-  useEffect(()=>{
-    const stored=localStorage.getItem(k);
-    if(!stored){
-      saveSp({c:Number(user.roulette_spins)||3,r:Date.now()});
-    } else {
-      try{
-        const s=JSON.parse(stored);
-        // Si el admin dio más giros que los que tiene guardados, actualizamos
-        if((user.roulette_spins||3) > s.c && Date.now()-s.r<86400000){
-          saveSp({...s,c:Number(user.roulette_spins)||3});
-        }
-      }catch(e){}
-    }
-  // eslint-disable-next-line
-  },[user.roulette_spins]);
 
   const doSpin=async()=>{
     if(!enabled) return toast$("La ruleta no está activa en tu cuenta","error");
-    let cur=sp;
-    if(Date.now()-cur.r>=86400000){ cur={c:Number(user.roulette_spins)||3,r:Date.now()}; saveSp(cur); }
-    if(cur.c<=0) return toast$("Sin giros. Espera mañana o compra más","error");
+    if(spinsLeft<=0) return toast$("Sin giros disponibles. Pide al administrador que te asigne más","error");
 
-    // Seleccionar premio basado en probabilidades REALES
-    // Solo considerar premios con p>0
-    const validPrizes=prizes.filter(p=>p.p>0);
-    if(validPrizes.length===0) return toast$("No hay premios configurados","error");
+    // 1. Primero descontar el giro en Supabase ANTES de girar
+    await sb.from("users").update({roulette_spins: spinsLeft - 1}).eq("id", user.id);
 
-    const roll=Math.random();
-    let cum=0, winPrize=null, winIdx=0;
-    for(let i=0;i<prizes.length;i++){
-      cum+=prizes[i].p;
-      if(roll<cum && prizes[i].p>0){
-        winPrize=prizes[i];
-        winIdx=i;
+    // 2. Seleccionar premio por probabilidad
+    const validPrizes = prizes.filter(p => Number(p.p) > 0);
+    if(validPrizes.length === 0) return toast$("No hay premios configurados","error");
+
+    const roll = Math.random();
+    let cum = 0;
+    let winPrize = validPrizes[validPrizes.length - 1]; // fallback al último válido
+    let winIdx = prizes.indexOf(winPrize);
+
+    for(let i = 0; i < prizes.length; i++){
+      cum += Number(prizes[i].p) || 0;
+      if(roll < cum){
+        winPrize = prizes[i];
+        winIdx = i;
         break;
       }
     }
-    // Si no cayó en ninguno (por redondeo), tomar el último con p>0
-    if(!winPrize){
-      for(let i=prizes.length-1;i>=0;i--){
-        if(prizes[i].p>0){ winPrize=prizes[i]; winIdx=i; break; }
-      }
-    }
+
+    // 3. Calcular ángulo: la rueda dibuja segmento i centrado en (i+0.5)*seg grados
+    // La flecha está en la parte superior (ángulo 0 = arriba, que es -90 en Math)
+    // Para que el centro del segmento ganador quede arriba necesitamos:
+    // rotación = 360*5 (5 vueltas) - (winIdx * seg + seg/2)
+    const baseRotation = 360 * 5;
+    const prizeAngle = winIdx * seg + seg / 2;
+    const finalAngle = baseRotation - prizeAngle;
+    setAng(prev => {
+      // Normalizamos el ángulo actual y sumamos la rotación necesaria
+      const normalized = prev % 360;
+      return prev + (finalAngle - normalized + 360) % 360 + 360 * 4;
+    });
 
     setSpin(true); setRes(null);
-    setAng(a=>a+1800+(seg*winIdx)+(seg/2));
-    saveSp({...cur,c:cur.c-1});
 
     setTimeout(async()=>{
       setSpin(false);
       if(winPrize.isPhone){
         setRes({pr:winPrize,win:0,isPhone:true});
         toast$("🎉 ¡Ganaste un iPhone 17! Contacta al admin.");
+        refresh();
         return;
       }
-      const win=Number(winPrize.amount)||0;
-      if(win>0){
-        await sb.from("users").update({balance:Number(user.balance)+win,earnings:Number(user.earnings)+win}).eq("id",user.id);
-        refresh();
+      const win = Number(winPrize.amount) || 0;
+      if(win > 0){
+        await sb.from("users").update({
+          balance: Number(user.balance) + win,
+          earnings: Number(user.earnings) + win
+        }).eq("id", user.id);
         toast$(`🎉 ¡Ganaste ${fmt(win)}!`);
       }
-      setRes({pr:winPrize,win});
-    },4500);
+      refresh();
+      setRes({pr:winPrize, win});
+    }, 4500);
   };
 
   const buy=async()=>{
     if(!enabled) return toast$("La ruleta no está activa","error");
     if((user.balance||0)<50) return toast$("Saldo insuficiente","error");
-    await sb.from("users").update({balance:Number(user.balance)-50}).eq("id",user.id);
+    await sb.from("users").update({
+      balance: Number(user.balance) - 50,
+      roulette_spins: spinsLeft + 1
+    }).eq("id", user.id);
     refresh();
-    saveSp({...sp,c:sp.c+1});
     toast$("Compraste 1 giro por $50");
   };
 
@@ -492,7 +481,7 @@ function Roulette({user,refresh,toast$,prizes}){
       ):(
         <>
           <div style={{display:"flex",justifyContent:"center",gap:12,marginBottom:22,flexWrap:"wrap"}}>
-            <IB l="Giros disponibles" v={sp.c} c="#FFD700"/>
+            <IB l="Giros disponibles" v={spinsLeft} c={spinsLeft>0?"#FFD700":"#ff4444"}/>
             <IB l="Tu saldo" v={fmt(user.balance)} c="#fff"/>
             <button onClick={buy} style={{background:"#111118",border:"1px solid #7c3aed30",color:"#7c3aed",borderRadius:11,padding:"10px 14px",cursor:"pointer",fontWeight:700,fontFamily:"'Syne'",fontSize:11,lineHeight:1.5}}>+ Giro<br/><span style={{fontFamily:"'Space Mono'",fontSize:10}}>$50</span></button>
           </div>
@@ -510,8 +499,8 @@ function Roulette({user,refresh,toast$,prizes}){
                 <text x="150" y="150" textAnchor="middle" dominantBaseline="middle" fill="#FFD700" fontSize="13">⭐</text>
               </svg>
             </div>
-            <button onClick={doSpin} disabled={spinning||sp.c<=0} style={{padding:"14px 40px",background:spinning||sp.c<=0?"#1a1a1a":"linear-gradient(135deg,#FFD700,#FF8C00)",color:spinning||sp.c<=0?"#333":"#000",border:"none",borderRadius:14,cursor:spinning||sp.c<=0?"not-allowed":"pointer",fontWeight:800,fontFamily:"'Syne'",fontSize:15}}>
-              {spinning?"🎰 Girando...":"🎰 ¡GIRAR!"}
+            <button onClick={doSpin} disabled={spinning||spinsLeft<=0} style={{padding:"14px 40px",background:spinning||spinsLeft<=0?"#1a1a1a":"linear-gradient(135deg,#FFD700,#FF8C00)",color:spinning||spinsLeft<=0?"#333":"#000",border:"none",borderRadius:14,cursor:spinning||spinsLeft<=0?"not-allowed":"pointer",fontWeight:800,fontFamily:"'Syne'",fontSize:15}}>
+              {spinning?"🎰 Girando...":spinsLeft<=0?"Sin giros disponibles":"🎰 ¡GIRAR!"}
             </button>
             {res&&!spinning&&(
               <div style={{background:"#111118",border:`2px solid ${res.pr.color}`,borderRadius:14,padding:20,textAlign:"center",width:"100%",animation:"su .4s ease"}}>

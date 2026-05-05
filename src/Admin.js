@@ -107,9 +107,14 @@ export default function Admin(){
   };
   // FIX: activar/desactivar sin perder los giros configurados
   const toggleRoulette=async(uid,current)=>{
-    const {error}=await sb.from("users").update({roulette_enabled:!current}).eq("id",uid);
+    // Al DESACTIVAR: pone giros en 0 también
+    // Al ACTIVAR: solo activa, giros quedan como están (admin los pone con los botones)
+    const updates = current
+      ? {roulette_enabled:false, roulette_spins:0}  // desactivar = quitar giros también
+      : {roulette_enabled:true};                     // activar = solo activar, giros sin cambio
+    const {error}=await sb.from("users").update(updates).eq("id",uid);
     if(error) return toast$("Error al actualizar","error");
-    fetchAll(); toast$(`Ruleta ${!current?"activada ✅":"desactivada ❌"}`);
+    fetchAll(); toast$(`Ruleta ${!current?"activada ✅ — Asigna los giros abajo":"desactivada y giros en 0 ❌"}`);
   };
   // FIX: setear giros directamente, independiente del toggle
   const setSpins=async(uid,spins)=>{
