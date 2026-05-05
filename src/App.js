@@ -5,52 +5,64 @@ const fmt     = (n) => `$${Number(n||0).toLocaleString("es-MX",{minimumFractionD
 const hash    = (s) => btoa(unescape(encodeURIComponent(s+"_cdmx2024")));
 const genCode = ()  => Math.random().toString(36).substring(2,8).toUpperCase();
 
-// Productos base (las imágenes se cargan desde Supabase config)
 const PRODUCTS_BASE = [
-  { id:1, name:"Nissan March",           price:820,   daily:20,   type:"taxi",      badge:"🚕 TAXI CDMX", desc:"Taxi oficial de la CDMX",        referral:82,   imgKey:"img_march" },
-  { id:2, name:"Hyundai Grand i10 Sedán",price:2400,  daily:60,   type:"taxi",      badge:"🚕 TAXI CDMX", desc:"Taxi oficial de la CDMX",         referral:240,  imgKey:"img_i10"   },
-  { id:3, name:"Nissan Versa",           price:7200,  daily:180,  type:"taxi",      badge:"🚕 TAXI CDMX", desc:"El favorito de los taxistas CDMX", referral:720,  imgKey:"img_versa" },
-  { id:4, name:"Nissan Urvan",           price:25200, daily:720,  type:"ejecutivo", badge:"⭐ EJECUTIVO",  desc:"Transporte ejecutivo y de grupo",  referral:2520, imgKey:null        },
-  { id:5, name:"Chevrolet Tahoe",        price:75600, daily:2160, type:"ejecutivo", badge:"👑 PREMIUM",    desc:"El máximo lujo ejecutivo",         referral:7560, imgKey:null        },
+  { id:1, name:"Nissan March",           price:820,   daily:20,   type:"taxi",      badge:"🚕 TAXI CDMX", desc:"Taxi oficial de la CDMX",         referral:82,   imgKey:"img_march" },
+  { id:2, name:"Hyundai Grand i10 Sedán",price:2400,  daily:60,   type:"taxi",      badge:"🚕 TAXI CDMX", desc:"Taxi oficial de la CDMX",          referral:240,  imgKey:"img_i10"   },
+  { id:3, name:"Nissan Versa",           price:7200,  daily:180,  type:"taxi",      badge:"🚕 TAXI CDMX", desc:"El favorito de los taxistas CDMX",  referral:720,  imgKey:"img_versa" },
+  { id:4, name:"Nissan Urvan",           price:25200, daily:720,  type:"ejecutivo", badge:"⭐ EJECUTIVO",  desc:"Transporte ejecutivo y de grupo",   referral:2520, imgKey:"img_urvan" },
+  { id:5, name:"Chevrolet Tahoe",        price:75600, daily:2160, type:"ejecutivo", badge:"👑 PREMIUM",    desc:"El máximo lujo ejecutivo",          referral:7560, imgKey:"img_tahoe" },
 ];
 
-const IMG_EJECUTIVO = {
+const DEFAULT_IMGS = {
   4: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Nissan_Urvan_E26_%28facelift%2C_NV350%29%2C_front_8.15.19.jpg/640px-Nissan_Urvan_E26_%28facelift%2C_NV350%29%2C_front_8.15.19.jpg",
   5: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/2022_Chevrolet_Tahoe_RST%2C_front_6.27.21.jpg/640px-2022_Chevrolet_Tahoe_RST%2C_front_6.27.21.jpg",
 };
 
+const WITHDRAW_AMOUNTS = [50, 100, 300, 1500, 6000, 15000];
+const RETENTION = 0.10; // 10%
+
 export default function App() {
-  const [user,   setUser]   = useState(undefined);
-  const [view,   setView]   = useState("home");
-  const [toast,  setToast]  = useState(null);
-  const [config, setConfig] = useState({});       // datos de Supabase config
-  const [products,setProducts]=useState(PRODUCTS_BASE);
+  const [user,    setUser]    = useState(undefined);
+  const [view,    setView]    = useState("home");
+  const [toast,   setToast]   = useState(null);
+  const [config,  setConfig]  = useState({});
+  const [products,setProducts]= useState(PRODUCTS_BASE);
   const rtRef = useRef(null);
 
   const toast$ = (msg,type="success")=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3500); };
 
-  // Cargar config global (imágenes, cuenta bancaria, ruleta, productos extra)
   const loadConfig = useCallback(async()=>{
     const {data} = await sb.from("config").select("*");
     if(!data) return;
-    const cfg = {};
+    const cfg={};
     data.forEach(r=>{ cfg[r.key]=r.value; });
     setConfig(cfg);
-    // Actualizar imágenes en productos
-    setProducts(prev => prev.map(p => ({
+    // Armar productos con imágenes y extras
+    let base = PRODUCTS_BASE.map(p=>({
       ...p,
-      img: p.imgKey && cfg[p.imgKey] ? cfg[p.imgKey] : (IMG_EJECUTIVO[p.id]||null)
-    })));
-    // Cargar productos extra del admin
-    if(cfg.extra_products){
-      try{
+      img: cfg[p.imgKey] || DEFAULT_IMGS[p.id] || null
+    }));
+    // Productos extra del admin
+    try{
+      if(cfg.extra_products){
         const extra = JSON.parse(cfg.extra_products);
-        setProducts(prev=>{
-          const base = PRODUCTS_BASE.map(p=>({...p, img: p.imgKey&&cfg[p.imgKey]?cfg[p.imgKey]:(IMG_EJECUTIVO[p.id]||null)}));
-          return [...base, ...extra];
+        // Aplicar overrides de precio/daily/referral si existen
+        base = base.map(p=>{
+          const ov = cfg[`override_${p.id}`];
+          if(ov){ try{ const o=JSON.parse(ov); return {...p,...o}; }catch(e){} }
+          return p;
         });
-      }catch(e){}
-    }
+        setProducts([...base,...extra]);
+        return;
+      }
+    }catch(e){}
+    // Aplicar overrides aunque no haya extras
+    base = base.map(p=>{
+      const ov = cfg[`override_${p.id}`];
+      if(ov){ try{ const o=JSON.parse(ov); return {...p,...o}; }catch(e){} }
+      return p;
+    });
+    setProducts(base);
   },[]);
 
   const loadUser = useCallback(async(uid)=>{
@@ -72,16 +84,15 @@ export default function App() {
     return()=>{ if(rtRef.current) rtRef.current.unsubscribe(); };
   },[loadConfig,loadUser]);
 
-  const refresh = ()=>user&&loadUser(user.id);
-  const logout  = ()=>{ localStorage.removeItem("uid"); if(rtRef.current) rtRef.current.unsubscribe(); setUser(null); setView("home"); };
+  const refresh=()=>user&&loadUser(user.id);
+  const logout=()=>{ localStorage.removeItem("uid"); if(rtRef.current) rtRef.current.unsubscribe(); setUser(null); setView("home"); };
 
   if(user===undefined) return <Loader/>;
   if(!user) return <Auth onLogin={u=>{localStorage.setItem("uid",u.id);loadUser(u.id);}} toast$={toast$} toast={toast}/>;
 
-  // Premios de ruleta desde config
-  let prizes = [];
-  try{ prizes = config.roulette_prizes ? JSON.parse(config.roulette_prizes) : defaultPrizes(); }
-  catch(e){ prizes = defaultPrizes(); }
+  let prizes=[];
+  try{ prizes=config.roulette_prizes?JSON.parse(config.roulette_prizes):defaultPrizes(); }
+  catch(e){ prizes=defaultPrizes(); }
 
   return(
     <div style={{minHeight:"100vh",background:"#0a0a0f",color:"#fff",fontFamily:"'Syne',sans-serif"}}>
@@ -121,7 +132,7 @@ export default function App() {
 const Loader=()=>(<div style={{minHeight:"100vh",background:"#0a0a0f",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><div style={{fontSize:48}}>🚖</div><div style={{color:"#FFD700",fontFamily:"sans-serif",fontSize:16}}>Cargando...</div></div>);
 
 function defaultPrizes(){
-  return [
+  return[
     {label:"iPhone 17",amount:0,isPhone:true,color:"#7c3aed",p:0},
     {label:"$10,000",amount:10000,color:"#ff6b35",p:0},
     {label:"$5,000",amount:5000,color:"#FF8C00",p:0},
@@ -150,10 +161,11 @@ function Auth({onLogin,toast$,toast}){
     if(!data){toast$("Teléfono o contraseña incorrectos","error");setBusy(false);return;}
     onLogin(data); setBusy(false);
   };
+
   const register=async()=>{
-    if(!ph||ph.length<10)  return toast$("Teléfono inválido","error");
-    if(!nm.trim())          return toast$("Ingresa tu nombre","error");
-    if(!pw||pw.length<6)   return toast$("Contraseña mín. 6 caracteres","error");
+    if(!ph||ph.length<10) return toast$("Teléfono inválido","error");
+    if(!nm.trim())         return toast$("Ingresa tu nombre","error");
+    if(!pw||pw.length<6)  return toast$("Contraseña mín. 6 caracteres","error");
     setBusy(true);
     const {data:ex}=await sb.from("users").select("id").eq("phone",ph).single();
     if(ex){toast$("Número ya registrado","error");setBusy(false);return;}
@@ -166,8 +178,7 @@ function Auth({onLogin,toast$,toast}){
     const {data:nu,error}=await sb.from("users").insert({
       phone:ph,name:nm,password_hash:hash(pw),code:genCode(),
       balance:0,earnings:0,referred_by:refBy,referral_count:0,
-      last_collect:0,created_at:Date.now(),
-      bank_account:"",bank_name:""
+      last_collect:0,created_at:Date.now(),bank_account:"",bank_name:""
     }).select().single();
     if(error){toast$("Error: "+error.message,"error");setBusy(false);return;}
     if(refBy){
@@ -318,10 +329,7 @@ const PC=({p,rented,onSel})=>{
   return(
     <div style={{background:"#111118",border:`1px solid ${rented?"#00cc6630":"#1a1a1a"}`,borderRadius:16,overflow:"hidden",transition:"transform .2s,border-color .2s"}} onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.borderColor=t?"#FFD70044":"#3a3a3a";}} onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.borderColor=rented?"#00cc6630":"#1a1a1a";}}>
       <div style={{position:"relative",height:180,background:"#181818",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
-        {p.img
-          ? <img src={p.img} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";e.target.nextSibling&&(e.target.nextSibling.style.display="flex");}}/>
-          : null}
-        <div style={{display:p.img?"none":"flex",position:"absolute",inset:0,alignItems:"center",justifyContent:"center",fontSize:48,opacity:.3}}>🚗</div>
+        {p.img?<img src={p.img} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>e.target.style.display="none"}/>:<div style={{fontSize:48,opacity:.3}}>🚗</div>}
         <div style={{position:"absolute",top:8,left:8,background:t?"#FFD700":"rgba(0,0,0,.8)",border:t?"none":"1px solid #333",color:t?"#000":"#fff",padding:"3px 8px",borderRadius:20,fontSize:9,fontWeight:700}}>{p.badge}</div>
         {rented&&<div style={{position:"absolute",top:8,right:8,background:"#00cc66",color:"#fff",padding:"3px 8px",borderRadius:20,fontSize:9,fontWeight:700}}>✓ RENTADO</div>}
       </div>
@@ -342,6 +350,7 @@ const PC=({p,rented,onSel})=>{
 /* ── DASHBOARD ── */
 function Dashboard({user,products}){
   const rentals=user.rentals||[];
+  const td=rentals.reduce((a,r)=>{const p=products.find(x=>x.id===r.product_id);return a+(p?p.daily:0);},0);
   return(
     <div>
       <h1 style={{fontSize:22,fontWeight:800,margin:"0 0 20px"}}>📊 Mi Panel</h1>
@@ -368,7 +377,7 @@ function Dashboard({user,products}){
         </div>
         <div style={{background:"#111118",border:"1px solid #1e1e1e",borderRadius:16,padding:20}}>
           <h2 style={{margin:"0 0 12px",fontSize:15}}>📋 Estadísticas</h2>
-          {[["Saldo",fmt(user.balance),"#FFD700"],["Total ganado",fmt(user.earnings),"#00cc66"],["Vehículos",rentals.length,"#0ea5e9"],["Referidos",user.referral_count||0,"#7c3aed"]].map(([l,v,c])=>(
+          {[["Saldo actual",fmt(user.balance),"#FFD700"],["Total ganado",fmt(user.earnings),"#00cc66"],["Ganancia del día",fmt(td),"#0ea5e9"],["Vehículos",rentals.length,"#7c3aed"],["Referidos",user.referral_count||0,"#ff6b35"]].map(([l,v,c])=>(
             <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #0f0f0f",fontSize:12}}>
               <span style={{color:"#444"}}>{l}</span><span style={{fontFamily:"'Space Mono'",fontWeight:700,color:c}}>{v}</span>
             </div>
@@ -384,42 +393,90 @@ function Roulette({user,refresh,toast$,prizes}){
   const [spinning,setSpin]=useState(false),[ang,setAng]=useState(0),[res,setRes]=useState(null);
   const enabled=user.roulette_enabled===true;
   const k=`sp_${user.id}`;
-  const [sp,setSp]=useState(()=>{
-    try{const s=JSON.parse(localStorage.getItem(k));if(s&&Date.now()-s.r<86400000)return s;}catch{}
-    return{c:user.roulette_spins||3,r:Date.now()};
-  });
+  const initSpins=()=>{
+    try{
+      const s=JSON.parse(localStorage.getItem(k));
+      if(s&&Date.now()-s.r<86400000) return s;
+    }catch(e){}
+    return{c:Number(user.roulette_spins)||3,r:Date.now()};
+  };
+  const [sp,setSp]=useState(initSpins);
   const saveSp=s=>{setSp(s);localStorage.setItem(k,JSON.stringify(s));};
   const seg=360/prizes.length;
 
+  // Cuando cambien los giros del admin, actualizar localmente
+  useEffect(()=>{
+    const stored=localStorage.getItem(k);
+    if(!stored){
+      saveSp({c:Number(user.roulette_spins)||3,r:Date.now()});
+    } else {
+      try{
+        const s=JSON.parse(stored);
+        // Si el admin dio más giros que los que tiene guardados, actualizamos
+        if((user.roulette_spins||3) > s.c && Date.now()-s.r<86400000){
+          saveSp({...s,c:Number(user.roulette_spins)||3});
+        }
+      }catch(e){}
+    }
+  // eslint-disable-next-line
+  },[user.roulette_spins]);
+
   const doSpin=async()=>{
     if(!enabled) return toast$("La ruleta no está activa en tu cuenta","error");
-    let cur=sp; if(Date.now()-cur.r>=86400000){cur={c:user.roulette_spins||3,r:Date.now()};saveSp(cur);}
+    let cur=sp;
+    if(Date.now()-cur.r>=86400000){ cur={c:Number(user.roulette_spins)||3,r:Date.now()}; saveSp(cur); }
     if(cur.c<=0) return toast$("Sin giros. Espera mañana o compra más","error");
-    // Calcular probabilidades acumuladas (solo premios con p>0)
+
+    // Seleccionar premio basado en probabilidades REALES
+    // Solo considerar premios con p>0
     const validPrizes=prizes.filter(p=>p.p>0);
     if(validPrizes.length===0) return toast$("No hay premios configurados","error");
-    const roll=Math.random();let cum=0,idx=0;
-    for(let i=0;i<prizes.length;i++){cum+=prizes[i].p;if(roll<=cum){idx=i;break;}}
-    setSpin(true);setRes(null);setAng(a=>a+1800+(seg*idx)+(seg/2));
+
+    const roll=Math.random();
+    let cum=0, winPrize=null, winIdx=0;
+    for(let i=0;i<prizes.length;i++){
+      cum+=prizes[i].p;
+      if(roll<cum && prizes[i].p>0){
+        winPrize=prizes[i];
+        winIdx=i;
+        break;
+      }
+    }
+    // Si no cayó en ninguno (por redondeo), tomar el último con p>0
+    if(!winPrize){
+      for(let i=prizes.length-1;i>=0;i--){
+        if(prizes[i].p>0){ winPrize=prizes[i]; winIdx=i; break; }
+      }
+    }
+
+    setSpin(true); setRes(null);
+    setAng(a=>a+1800+(seg*winIdx)+(seg/2));
     saveSp({...cur,c:cur.c-1});
+
     setTimeout(async()=>{
-      setSpin(false);const pr=prizes[idx];
-      if(pr.isPhone){
-        setRes({pr,win:0,isPhone:true});
+      setSpin(false);
+      if(winPrize.isPhone){
+        setRes({pr:winPrize,win:0,isPhone:true});
         toast$("🎉 ¡Ganaste un iPhone 17! Contacta al admin.");
         return;
       }
-      let win=pr.amount||0;
-      if(win>0){await sb.from("users").update({balance:Number(user.balance)+win,earnings:Number(user.earnings)+win}).eq("id",user.id);refresh();toast$(`🎉 ¡Ganaste ${fmt(win)}!`);}
-      setRes({pr,win});
+      const win=Number(winPrize.amount)||0;
+      if(win>0){
+        await sb.from("users").update({balance:Number(user.balance)+win,earnings:Number(user.earnings)+win}).eq("id",user.id);
+        refresh();
+        toast$(`🎉 ¡Ganaste ${fmt(win)}!`);
+      }
+      setRes({pr:winPrize,win});
     },4500);
   };
 
   const buy=async()=>{
     if(!enabled) return toast$("La ruleta no está activa","error");
     if((user.balance||0)<50) return toast$("Saldo insuficiente","error");
-    await sb.from("users").update({balance:Number(user.balance)-50}).eq("id",user.id);refresh();
-    saveSp({...sp,c:sp.c+1});toast$("Compraste 1 giro por $50");
+    await sb.from("users").update({balance:Number(user.balance)-50}).eq("id",user.id);
+    refresh();
+    saveSp({...sp,c:sp.c+1});
+    toast$("Compraste 1 giro por $50");
   };
 
   return(
@@ -447,7 +504,7 @@ function Roulette({user,refresh,toast$,prizes}){
                   const a1=(i*seg-90)*Math.PI/180,a2=((i+1)*seg-90)*Math.PI/180,cx=150,cy=150,r=140;
                   const x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1),x2=cx+r*Math.cos(a2),y2=cy+r*Math.sin(a2);
                   const mx=cx+(r*.67)*Math.cos((a1+a2)/2),my=cy+(r*.67)*Math.sin((a1+a2)/2);
-                  return(<g key={i}><path d={`M${cx} ${cy} L${x1} ${y1} A${r} ${r} 0 0 1 ${x2} ${y2}Z`} fill={p.color||"#555"} stroke="#0a0a0f" strokeWidth="2"/><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fill="#fff" fontSize={p.label.length>6?"8":"10"} fontWeight="800" fontFamily="Syne" transform={`rotate(${i*seg+seg/2+90},${mx},${my})`}>{p.label}</text></g>);
+                  return(<g key={i}><path d={`M${cx} ${cy} L${x1} ${y1} A${r} ${r} 0 0 1 ${x2} ${y2}Z`} fill={p.color||"#555"} stroke="#0a0a0f" strokeWidth="2"/><text x={mx} y={my} textAnchor="middle" dominantBaseline="middle" fill="#fff" fontSize={p.label&&p.label.length>6?"8":"10"} fontWeight="800" fontFamily="Syne" transform={`rotate(${i*seg+seg/2+90},${mx},${my})`}>{p.label}</text></g>);
                 })}
                 <circle cx="150" cy="150" r="20" fill="#0a0a0f" stroke="#FFD700" strokeWidth="3"/>
                 <text x="150" y="150" textAnchor="middle" dominantBaseline="middle" fill="#FFD700" fontSize="13">⭐</text>
@@ -461,8 +518,8 @@ function Roulette({user,refresh,toast$,prizes}){
                 <div style={{fontSize:38,marginBottom:7}}>{res.isPhone?"📱":"🎉"}</div>
                 <div style={{fontWeight:800,fontSize:19,color:res.pr.color,marginBottom:4}}>¡{res.pr.label}!</div>
                 {res.isPhone
-                  ? <div style={{color:"#aaa",fontSize:13}}>Contacta al administrador para reclamar tu premio</div>
-                  : <div style={{fontFamily:"'Space Mono'",fontSize:16,color:"#00cc66",fontWeight:700}}>+{fmt(res.win)}</div>
+                  ?<div style={{color:"#aaa",fontSize:13}}>Contacta al administrador para reclamar tu premio</div>
+                  :<div style={{fontFamily:"'Space Mono'",fontSize:16,color:"#00cc66",fontWeight:700}}>+{fmt(res.win)}</div>
                 }
               </div>
             )}
@@ -477,10 +534,11 @@ const IB=({l,v,c})=>(<div style={{background:"#111118",border:"1px solid #1e1e1e
 /* ── WALLET ── */
 function Wallet({user,refresh,toast$,config}){
   const [tab,setTab]=useState("deposit");
-  const [a,setA]=useState(""),[pr,setPr]=useState("");
-  // Datos bancarios guardados del usuario
-  const [wa,setWa]=useState(user.bank_account||"");
+  const [depAmt,setDepAmt]=useState("");
+  const [proof,setProof]=useState("");
+  const [selAmt,setSelAmt]=useState(null);
   const [wb,setWb]=useState(user.bank_name||"");
+  const [wac,setWac]=useState(user.bank_account||"");
   const [busy,setBusy]=useState(false);
 
   const bankName    = config.bank_name    || "Albo";
@@ -488,25 +546,25 @@ function Wallet({user,refresh,toast$,config}){
   const bankAccount = config.bank_account || "721180100035412791";
 
   const dep=async()=>{
-    if(!a||isNaN(a)||Number(a)<=0) return toast$("Monto inválido","error");
-    if(!pr.trim()) return toast$("Ingresa referencia/comprobante","error");
+    if(!depAmt||isNaN(depAmt)||Number(depAmt)<=0) return toast$("Monto inválido","error");
+    if(!proof.trim()) return toast$("Ingresa referencia/comprobante","error");
     setBusy(true);
-    await sb.from("deposits").insert({user_id:user.id,user_name:user.name,user_phone:user.phone,amount:Number(a),proof:pr,status:"pending",created_at:Date.now()});
-    setA("");setPr("");setBusy(false);
+    await sb.from("deposits").insert({user_id:user.id,user_name:user.name,user_phone:user.phone,amount:Number(depAmt),proof,status:"pending",created_at:Date.now()});
+    setDepAmt(""); setProof(""); setBusy(false);
     toast$("✅ Solicitud enviada. Procesada en <24hrs.");
   };
 
   const wit=async()=>{
-    if(!wa||isNaN(wa)||Number(wa)<=0) return toast$("Monto inválido","error");
-    if(Number(wa)>(user.balance||0)) return toast$("Saldo insuficiente","error");
-    if(!wb.trim()) return toast$("Ingresa tu banco/CLABE","error");
+    if(!selAmt) return toast$("Selecciona un monto de retiro","error");
+    if(selAmt>(user.balance||0)) return toast$("Saldo insuficiente","error");
+    if(!wb.trim()||!wac.trim()) return toast$("Ingresa banco y cuenta","error");
+    const net=Math.round(selAmt*(1-RETENTION)*100)/100;
     setBusy(true);
-    // Guardar datos bancarios del usuario para futuras solicitudes
-    await sb.from("users").update({bank_account:wa,bank_name:wb}).eq("id",user.id);
-    await sb.from("withdrawals").insert({user_id:user.id,user_name:user.name,user_phone:user.phone,amount:Number(wa),bank:wb,account:user.bank_account||"",status:"pending",created_at:Date.now()});
-    await sb.from("users").update({balance:Number(user.balance)-Number(wa)}).eq("id",user.id);
-    refresh();setBusy(false);
-    toast$("✅ Retiro solicitado. Se procesa en 24–48hrs.");
+    // Guardar datos bancarios del usuario
+    await sb.from("users").update({bank_name:wb,bank_account:wac,balance:Number(user.balance)-selAmt}).eq("id",user.id);
+    await sb.from("withdrawals").insert({user_id:user.id,user_name:user.name,user_phone:user.phone,amount:selAmt,net_amount:net,bank:wb,account:wac,status:"pending",created_at:Date.now()});
+    refresh(); setSelAmt(null); setBusy(false);
+    toast$(`✅ Retiro de ${fmt(selAmt)} solicitado. Recibirás ${fmt(net)} (10% retención).`);
   };
 
   return(
@@ -518,6 +576,7 @@ function Wallet({user,refresh,toast$,config}){
           <button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"10px",background:tab===t?"#FFD700":"transparent",color:tab===t?"#000":"#444",border:"none",borderRadius:10,cursor:"pointer",fontWeight:700,fontFamily:"'Syne'",fontSize:14}}>{l}</button>
         ))}
       </div>
+
       {tab==="deposit"&&(
         <div style={{background:"#111118",border:"1px solid #1e1e1e",borderRadius:18,padding:22}}>
           <h2 style={{margin:"0 0 14px",fontSize:15}}>💳 Recargar Saldo</h2>
@@ -531,31 +590,61 @@ function Wallet({user,refresh,toast$,config}){
             ))}
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:11}}>
-            <input className="inp" type="number" placeholder="Monto depositado (MXN)" value={a} onChange={e=>setA(e.target.value)}/>
-            <input className="inp" placeholder="Referencia o folio de transferencia" value={pr} onChange={e=>setPr(e.target.value)}/>
+            <input className="inp" type="number" placeholder="Monto depositado (MXN)" value={depAmt} onChange={e=>setDepAmt(e.target.value)}/>
+            <input className="inp" placeholder="Referencia o folio de transferencia" value={proof} onChange={e=>setProof(e.target.value)}/>
             <button onClick={dep} disabled={busy} style={{padding:"13px",background:"linear-gradient(135deg,#FFD700,#FF8C00)",border:"none",color:"#000",borderRadius:12,cursor:"pointer",fontWeight:800,fontFamily:"'Syne'",fontSize:14}}>{busy?"⏳...":"📤 Enviar Comprobante"}</button>
           </div>
         </div>
       )}
+
       {tab==="withdraw"&&(
         <div style={{background:"#111118",border:"1px solid #1e1e1e",borderRadius:18,padding:22}}>
-          <h2 style={{margin:"0 0 14px",fontSize:15}}>📤 Solicitar Retiro</h2>
-          {(user.bank_account||user.bank_name)&&(
-            <div style={{background:"#0a0a14",border:"1px solid #00cc6620",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12}}>
-              <div style={{color:"#444",marginBottom:4}}>📋 Datos guardados de tu último retiro:</div>
-              <div style={{color:"#ccc"}}>{user.bank_name} — <span style={{fontFamily:"'Space Mono'",color:"#00cc66"}}>{user.bank_account}</span></div>
+          <h2 style={{margin:"0 0 6px",fontSize:15}}>📤 Solicitar Retiro</h2>
+          <div style={{background:"#0a0a14",border:"1px solid #FF8C0030",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12}}>
+            <div style={{color:"#FF8C00",fontWeight:700,marginBottom:2}}>⏰ Retiros disponibles de 11:00 AM a 5:00 PM</div>
+            <div style={{color:"#555"}}>Se aplica una retención del <strong style={{color:"#FFD700"}}>10%</strong> sobre el monto retirado.</div>
+          </div>
+
+          {/* MONTOS FIJOS */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:11,color:"#666",marginBottom:8}}>Selecciona el monto a retirar:</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+              {WITHDRAW_AMOUNTS.map(amt=>(
+                <button key={amt} onClick={()=>setSelAmt(amt)} style={{padding:"12px 6px",background:selAmt===amt?"#FFD700":"#0a0a0f",color:selAmt===amt?"#000":"#aaa",border:`1px solid ${selAmt===amt?"#FFD700":"#2a2a2a"}`,borderRadius:10,cursor:"pointer",fontFamily:"'Space Mono'",fontWeight:700,fontSize:13,transition:"all .15s"}}>
+                  {fmt(amt)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {selAmt&&(
+            <div style={{background:"#0a0a0f",borderRadius:10,padding:12,marginBottom:14,fontSize:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #111"}}>
+                <span style={{color:"#555"}}>Monto solicitado</span><span style={{fontFamily:"'Space Mono'",color:"#fff"}}>{fmt(selAmt)}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #111"}}>
+                <span style={{color:"#555"}}>Retención 10%</span><span style={{fontFamily:"'Space Mono'",color:"#ff4444"}}>-{fmt(selAmt*RETENTION)}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0"}}>
+                <span style={{color:"#00cc66",fontWeight:700}}>Recibirás</span><span style={{fontFamily:"'Space Mono'",color:"#00cc66",fontWeight:700}}>{fmt(selAmt*(1-RETENTION))}</span>
+              </div>
             </div>
           )}
-          <div style={{display:"flex",flexDirection:"column",gap:11}}>
-            <div>
-              <input className="inp" type="number" placeholder="Monto a retirar" value={wa} onChange={e=>setWa(e.target.value)}/>
-              <div style={{fontSize:11,color:"#333",marginTop:4}}>Disponible: {fmt(user.balance)}</div>
-            </div>
-            <input className="inp" placeholder="Banco (BBVA, HSBC, Albo...)" value={wb} onChange={e=>setWb(e.target.value)}/>
-            <input className="inp" placeholder="CLABE o número de cuenta" value={user.bank_account} onChange={e=>{}} readOnly style={{color:"#888"}}/>
-            <p style={{fontSize:11,color:"#444",margin:0}}>Para cambiar tu CLABE contacta al administrador.</p>
-            <button onClick={wit} disabled={busy} style={{padding:"13px",background:"linear-gradient(135deg,#00cc66,#00ff88)",border:"none",color:"#000",borderRadius:12,cursor:"pointer",fontWeight:800,fontFamily:"'Syne'",fontSize:14}}>{busy?"⏳...":"✅ Solicitar Retiro"}</button>
+
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
+            {(user.bank_name||user.bank_account)&&(
+              <div style={{background:"#0a0a14",border:"1px solid #00cc6620",borderRadius:9,padding:"9px 12px",fontSize:11}}>
+                <div style={{color:"#444",marginBottom:3}}>📋 Datos guardados:</div>
+                <div style={{color:"#ccc"}}>{user.bank_name} — <span style={{fontFamily:"'Space Mono'",color:"#00cc66"}}>{user.bank_account}</span></div>
+              </div>
+            )}
+            <input className="inp" placeholder="Tu banco (BBVA, HSBC, Albo...)" value={wb} onChange={e=>setWb(e.target.value)}/>
+            <input className="inp" placeholder="CLABE o número de cuenta (18 dígitos)" value={wac} onChange={e=>setWac(e.target.value)}/>
           </div>
+
+          <button onClick={wit} disabled={busy||!selAmt} style={{width:"100%",padding:"13px",background:busy||!selAmt?"#1a1a1a":"linear-gradient(135deg,#00cc66,#00ff88)",border:"none",color:busy||!selAmt?"#444":"#000",borderRadius:12,cursor:busy||!selAmt?"not-allowed":"pointer",fontWeight:800,fontFamily:"'Syne'",fontSize:14}}>
+            {busy?"⏳...":selAmt?`✅ Retirar ${fmt(selAmt)} → Recibes ${fmt(selAmt*(1-RETENTION))}`:"Selecciona un monto"}
+          </button>
         </div>
       )}
     </div>
